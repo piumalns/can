@@ -1,9 +1,15 @@
 package com.example.hasith.canu;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 //import android.support.design.widget.FloatingActionButton;
+import android.provider.MediaStore;
 import android.support.annotation.Nullable;
 import android.support.design.widget.NavigationView;
 import android.support.v4.view.GravityCompat;
@@ -16,12 +22,29 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.Toast;
 
+import com.android.volley.AuthFailureError;
+import com.android.volley.Request;
+import com.android.volley.RequestQueue;
+import com.android.volley.Response;
+import com.android.volley.VolleyError;
+import com.android.volley.toolbox.JsonObjectRequest;
+import com.android.volley.toolbox.Volley;
 import com.github.clans.fab.FloatingActionMenu;
 import com.github.clans.fab.FloatingActionButton;
 import com.google.zxing.Result;
 import com.google.zxing.integration.android.IntentIntegrator;
+import com.theartofdev.edmodo.cropper.CropImage;
+import com.theartofdev.edmodo.cropper.CropImageView;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
 import me.dm7.barcodescanner.zxing.ZXingScannerView;
 
@@ -32,6 +55,9 @@ public class MainActivity extends AppCompatActivity
     final Activity activity = this;
     private Button loginButton;
     private IntentIntegrator qrScanner;
+    Uri imageUri;
+    ImageView profilPic;
+    SessionManager sessionManager;
 //    private FloatingActionButton  qrCodeScanner;
 
     @Override
@@ -41,10 +67,13 @@ public class MainActivity extends AppCompatActivity
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
+        sessionManager = new SessionManager(this);
+
         loginButton = (Button) findViewById(R.id.loginButton);
         floatingActionMenu = (FloatingActionMenu) findViewById(R.id.floatingMenu);
         floatingActionButton1 = (FloatingActionButton )findViewById(R.id.qrcode);
         floatingActionButton2 = (FloatingActionButton) findViewById(R.id.camera);
+        profilPic = (ImageView) findViewById(R.id.profilPic);
         qrScanner = new IntentIntegrator(this);
         floatingActionMenu.setOnMenuToggleListener(new FloatingActionMenu.OnMenuToggleListener() {
             @Override
@@ -59,6 +88,7 @@ public class MainActivity extends AppCompatActivity
             }
         });
         floatingActionButton1.setOnClickListener(onButtonClick());
+        floatingActionButton2.setOnClickListener(onImageClick());
 
         loginButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -87,11 +117,20 @@ public class MainActivity extends AppCompatActivity
                     Intent stareQr = new Intent(MainActivity.this,qrScaner.class);
                     startActivity(stareQr);
 
-                }else if (v == floatingActionButton2){
+                }
+            }
+        };
+    }
+
+    private View.OnClickListener onImageClick() {
+        return new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (v == floatingActionButton2){
+                    Intent stareQr = new Intent(MainActivity.this,TakePictureCamera.class);
+                    startActivity(stareQr);
 
                 }
-
-
             }
         };
     }
@@ -122,26 +161,61 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        // Inflate the menu; this adds items to the action bar if it is present.
-        getMenuInflater().inflate(R.menu.main, menu);
-        return true;
+    public void checkAndroidVersion(){
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE}, 555);
+            }catch (Exception e){
+
+            }
+        } else {
+            pickImage();
+        }
     }
 
     @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        // Handle action bar item clicks here. The action bar will
-        // automatically handle clicks on the Home/Up button, so long
-        // as you specify a parent activity in AndroidManifest.xml.
-        int id = item.getItemId();
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        if (requestCode == 555 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            pickImage();
+        } else {
+            checkAndroidVersion();
+        }
+    }
 
-        //noinspection SimplifiableIfStatement
-        if (id == R.id.action_settings) {
-            return true;
+    public void pickImage() {
+        CropImage.startPickImageActivity(this);
+    }
+
+    private void croprequest(Uri imageUri) {
+        CropImage.activity(imageUri)
+                .setGuidelines(CropImageView.Guidelines.ON)
+                .setMultiTouchEnabled(true)
+                .start(this);
+    }
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+
+        //RESULT FROM SELECTED IMAGE
+        if (requestCode == CropImage.PICK_IMAGE_CHOOSER_REQUEST_CODE && resultCode == Activity.RESULT_OK) {
+            Uri imageUri = CropImage.getPickImageResultUri(this, data);
+            croprequest(imageUri);
         }
 
-        return super.onOptionsItemSelected(item);
+        //RESULT FROM CROPING ACTIVITY
+        if (requestCode == CropImage.CROP_IMAGE_ACTIVITY_REQUEST_CODE) {
+            CropImage.ActivityResult result = CropImage.getActivityResult(data);
+            if (resultCode == RESULT_OK) {
+                try {
+                    Bitmap bitmap = MediaStore.Images.Media.getBitmap(getContentResolver(), result.getUri());
+
+                    ((ImageView)findViewById(R.id.profilPic)).setImageBitmap(bitmap);
+
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
     }
 
     @SuppressWarnings("StatementWithEmptyBody")
@@ -153,6 +227,9 @@ public class MainActivity extends AppCompatActivity
         if (id == R.id.nav_camera) {
             // Handle the camera action
         } else if (id == R.id.nav_gallery) {
+            checkAndroidVersion();
+            Log.i("supun","button");
+
 
         } else if (id == R.id.nav_slideshow) {
 
@@ -171,5 +248,6 @@ public class MainActivity extends AppCompatActivity
     private void showToast(String msg) {
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
     }
+
 
 }
